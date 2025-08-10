@@ -1,0 +1,63 @@
+name: Build VCamera APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+
+      # Install Android SDK + accept licenses
+      - name: Install Android SDK (cmdline-tools)
+        uses: android-actions/setup-android@v3
+
+      # Detect compileSdk/buildTools from your app files, fall back to sane defaults
+      - name: Detect Android versions from project
+        id: detect
+        run: |
+          set -e
+          # Try Kotlin DSL first, then Groovy; fall back to 34
+          COMPILE_SDK="$(grep -Po 'compileSdk\s*=\s*\K\d+' app/build.gradle.kts || true)"
+          [ -z "$COMPILE_SDK" ] && COMPILE_SDK="$(grep -Po 'compileSdk(?:Version)?\s*\K\d+' app/build.gradle || true)"
+          [ -z "$COMPILE_SDK" ] && COMPILE_SDK=34
+
+          # Try explicit buildToolsVersion; fall back to 34.0.0
+          BUILD_TOOLS="$(grep -Po 'buildToolsVersion\s*["'\'']\K[^"'\'']+' app/build.gradle || true)"
+          [ -z "$BUILD_TOOLS" ] && BUILD_TOOLS=34.0.0
+
+          echo "COMPILE_SDK=$COMPILE_SDK" >> $GITHUB_ENV
+          echo "BUILD_TOOLS=$BUILD_TOOLS" >> $GITHUB_ENV
+          echo "Detected compileSdk=$COMPILE_SDK buildTools=$BUILD_TOOLS"
+
+      # Install the exact platform + build-tools your project declares
+      - name: Install required Android platforms/build-tools
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager "platform-tools" "platforms;android-${COMPILE_SDK}" "build-tools;${BUILD_TOOLS}"
+
+      - name: Make Gradle executable
+        run: chmod +x ./gradlew
+
+      - name: Build debug APK (with logs)
+        run: ./gradlew assembleDebug --no-daemon --stacktrace --info
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: vcamera-apks
+          path: "**/build/outputs/apk/**/*.apk"
