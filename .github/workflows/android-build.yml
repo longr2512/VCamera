@@ -24,33 +24,32 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      # ---- Install a clean Android SDK locally (no actions that run --licenses interactively) ----
+      # Get latest cmdline-tools into a clean SDK dir
       - name: Install cmdline-tools (latest)
         run: |
-          set -euxo pipefail
+          set -eux
           mkdir -p "$SDK_ROOT/cmdline-tools"
-          curl -L -o /tmp/cmdline-tools.zip \
-            https://dl.google.com/android/repository/commandlinetools-linux-12266719_latest.zip
+          curl -L -o /tmp/cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-12266719_latest.zip
           unzip -q /tmp/cmdline-tools.zip -d "$SDK_ROOT/cmdline-tools"
           mv "$SDK_ROOT/cmdline-tools/cmdline-tools" "$SDK_ROOT/cmdline-tools/latest"
           echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> $GITHUB_ENV
           echo "ANDROID_HOME=$SDK_ROOT" >> $GITHUB_ENV
           echo "$SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
 
-      - name: Accept SDK licenses (non-interactive)
+      # ✅ Accept licenses non-interactively; ignore SIGPIPE from `yes`
+      - name: Accept SDK licenses
         run: |
-          set -euxo pipefail
-          yes | sdkmanager --sdk_root="$SDK_ROOT" --licenses > /dev/null
+          set -eux
+          mkdir -p ~/.android && touch ~/.android/repositories.cfg
+          yes | sdkmanager --sdk_root="$SDK_ROOT" --licenses >/dev/null || true
 
+      # Install exact platform + build-tools
       - name: Install required platforms/build-tools
         run: |
-          set -euxo pipefail
-          sdkmanager --sdk_root="$SDK_ROOT" \
-            "platform-tools" \
-            "platforms;android-34" \
-            "build-tools;34.0.0"
+          set -eux
+          sdkmanager --sdk_root="$SDK_ROOT" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
-      # ---- Build (repo has no Gradle wrapper) ----
+      # Use hosted Gradle (no wrapper in repo)
       - name: Setup Gradle (no cache)
         uses: gradle/actions/setup-gradle@v4
         with:
