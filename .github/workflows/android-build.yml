@@ -24,7 +24,7 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      # Get latest cmdline-tools into a clean SDK dir
+      # Clean, local Android SDK — no legacy preinstalls
       - name: Install cmdline-tools (latest)
         run: |
           set -eux
@@ -35,32 +35,48 @@ jobs:
           echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> $GITHUB_ENV
           echo "ANDROID_HOME=$SDK_ROOT" >> $GITHUB_ENV
           echo "$SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          mkdir -p ~/.android && touch ~/.android/repositories.cfg
 
-      # ✅ Accept licenses non-interactively; ignore SIGPIPE from `yes`
+      # Accept licenses (ignore harmless SIGPIPE if none pending)
       - name: Accept SDK licenses
         run: |
           set -eux
-          mkdir -p ~/.android && touch ~/.android/repositories.cfg
           yes | sdkmanager --sdk_root="$SDK_ROOT" --licenses >/dev/null || true
 
-      # Install exact platform + build-tools
+      # Install exact platform + build-tools (adjust if your project needs different)
       - name: Install required platforms/build-tools
         run: |
           set -eux
-          sdkmanager --sdk_root="$SDK_ROOT" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          sdkmanager --sdk_root="$SDK_ROOT" \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;34.0.0"
 
-      # Use hosted Gradle (no wrapper in repo)
+      # Use hosted Gradle, then CREATE a wrapper so we can call ./gradlew reliably
       - name: Setup Gradle (no cache)
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.10
           cache-disabled: true
 
+      - name: Generate Gradle Wrapper (8.10)
+        run: |
+          set -eux
+          gradle wrapper --gradle-version 8.10
+          chmod +x ./gradlew
+
+      # Make sure Gradle has enough heap and a consistent daemon state
+      - name: Create gradle.properties
+        run: |
+          mkdir -p ~/.gradle
+          cat >> ~/.gradle/gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx3g -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          android.enableJetifier=true
+          EOF
+
       - name: Build debug APK (verbose)
-        env:
-          ANDROID_SDK_ROOT: ${{ env.SDK_ROOT }}
-          ANDROID_HOME: ${{ env.SDK_ROOT }}
-        run: gradle assembleDebug --stacktrace --info
+        run: ./gradlew assembleDebug --no-daemon --stacktrace --info
 
       - name: Upload APKs
         uses: actions/upload-artifact@v4
