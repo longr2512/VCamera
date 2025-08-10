@@ -25,36 +25,47 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Install Android cmdline-tools
+      # ✅ Install newest cmdline-tools + platform-tools and pre-accept licenses
+      - name: Install Android SDK base (latest cmdline-tools)
         uses: android-actions/setup-android@v3
         with:
           accept-android-sdk-licenses: true
           log-accepted-android-sdk-licenses: true
-          packages: tools platform-tools
+          packages: |
+            cmdline-tools;latest
+            platform-tools
 
-      # Read compileSdk/buildTools from the project (fallbacks are safe)
+      # sanity-check the sdkmanager we're about to use
+      - name: Show sdkmanager path/version
+        run: |
+          which sdkmanager || true
+          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --version
+
+      # Pull compileSdk/buildTools from the project; provide safe fallbacks
       - name: Detect Android versions from project
         id: detect
-        run: |
-          set -e
-          COMPILE_SDK="$(grep -Po 'compileSdk\s*=\s*\K\d+' app/build.gradle.kts || true)"
-          [ -z "$COMPILE_SDK" ] && COMPILE_SDK="$(grep -Po 'compileSdk(?:Version)?\s*\K\d+' app/build.gradle || true)"
-          [ -z "$COMPILE_SDK" ] && COMPILE_SDK=34
-          BUILD_TOOLS="$(grep -Po 'buildToolsVersion\s*["'\'']\K[^"'\'']+' app/build.gradle || true)"
-          [ -z "$BUILD_TOOLS" ] && BUILD_TOOLS=34.0.0
-          echo "COMPILE_SDK=$COMPILE_SDK" >> $GITHUB_ENV
-          echo "BUILD_TOOLS=$BUILD_TOOLS" >> $GITHUB_ENV
-          echo "Detected compileSdk=$COMPILE_SDK buildTools=$BUILD_TOOLS"
-
-      # ✅ Force-accept licenses & install the exact platform + build tools
-      - name: Accept licenses & install SDK packages
         shell: bash
         run: |
-          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
-          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
-            "platforms;android-${COMPILE_SDK}" "build-tools;${BUILD_TOOLS}" "platform-tools"
+          set -euo pipefail
+          COMPILE_SDK="$(grep -Po 'compileSdk\s*=\s*\K\d+' app/build.gradle.kts || true)"
+          [ -z "${COMPILE_SDK:-}" ] && COMPILE_SDK="$(grep -Po 'compileSdk(?:Version)?\s*\K\d+' app/build.gradle || true)"
+          [ -z "${COMPILE_SDK:-}" ] && COMPILE_SDK=34
+          BUILD_TOOLS="$(grep -Po 'buildToolsVersion\s*["'\'']\K[^"'\'']+' app/build.gradle || true)"
+          [ -z "${BUILD_TOOLS:-}" ] && BUILD_TOOLS=34.0.0
+          echo "COMPILE_SDK=$COMPILE_SDK" >> "$GITHUB_ENV"
+          echo "BUILD_TOOLS=$BUILD_TOOLS" >> "$GITHUB_ENV"
+          echo "Detected compileSdk=$COMPILE_SDK buildTools=$BUILD_TOOLS"
 
-      # Use hosted Gradle because the repo has no ./gradlew wrapper
+      # ✅ Install the exact platform and build-tools your Gradle build expects
+      - name: Install required Android platforms/build-tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-${COMPILE_SDK}" \
+            "build-tools;${BUILD_TOOLS}"
+
+      # Use hosted Gradle (repo has no ./gradlew)
       - name: Setup Gradle (no cache)
         uses: gradle/actions/setup-gradle@v4
         with:
