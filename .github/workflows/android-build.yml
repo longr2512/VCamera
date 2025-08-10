@@ -20,12 +20,11 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-          cache: gradle
 
       - name: Install Android SDK (cmdline-tools)
         uses: android-actions/setup-android@v3
 
-      # (Optional) detect compileSdk/buildTools from the project; falls back to 34 / 34.0.0
+      # Read compileSdk & buildTools from the project (fallbacks if not found)
       - name: Detect Android versions from project
         id: detect
         run: |
@@ -44,12 +43,16 @@ jobs:
           yes | sdkmanager --licenses
           sdkmanager "platform-tools" "platforms;android-${COMPILE_SDK}" "build-tools;${BUILD_TOOLS}"
 
-      # Use hosted Gradle (no wrapper required)
-      - name: Build debug APK
-        uses: gradle/gradle-build-action@v3
+      # Use the new official Gradle setup and DISABLE caching (works around cache outage)
+      - name: Setup Gradle (no cache)
+        uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: 8.7
-          arguments: assembleDebug --no-daemon --stacktrace --info
+          gradle-version: '8.10'  # or '8.7' if you prefer
+          cache-disabled: true
+
+      # Wrapper is missing in this repo, so call the installed Gradle directly
+      - name: Build debug APK (verbose logs)
+        run: gradle assembleDebug --stacktrace --info
 
       - name: Upload APKs
         uses: actions/upload-artifact@v4
