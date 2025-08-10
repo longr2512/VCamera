@@ -8,7 +8,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     env:
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
       ANDROID_HOME: /usr/local/lib/android/sdk
@@ -25,8 +24,8 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      # ✅ Install newest cmdline-tools + platform-tools and pre-accept licenses
-      - name: Install Android SDK base (latest cmdline-tools)
+      # ✅ Install cmdline-tools + ALL required packages AND accept licenses in one shot
+      - name: Install Android SDK + packages (licenses pre-accepted)
         uses: android-actions/setup-android@v3
         with:
           accept-android-sdk-licenses: true
@@ -34,36 +33,8 @@ jobs:
           packages: |
             cmdline-tools;latest
             platform-tools
-
-      # sanity-check the sdkmanager we're about to use
-      - name: Show sdkmanager path/version
-        run: |
-          which sdkmanager || true
-          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --version
-
-      # Pull compileSdk/buildTools from the project; provide safe fallbacks
-      - name: Detect Android versions from project
-        id: detect
-        shell: bash
-        run: |
-          set -euo pipefail
-          COMPILE_SDK="$(grep -Po 'compileSdk\s*=\s*\K\d+' app/build.gradle.kts || true)"
-          [ -z "${COMPILE_SDK:-}" ] && COMPILE_SDK="$(grep -Po 'compileSdk(?:Version)?\s*\K\d+' app/build.gradle || true)"
-          [ -z "${COMPILE_SDK:-}" ] && COMPILE_SDK=34
-          BUILD_TOOLS="$(grep -Po 'buildToolsVersion\s*["'\'']\K[^"'\'']+' app/build.gradle || true)"
-          [ -z "${BUILD_TOOLS:-}" ] && BUILD_TOOLS=34.0.0
-          echo "COMPILE_SDK=$COMPILE_SDK" >> "$GITHUB_ENV"
-          echo "BUILD_TOOLS=$BUILD_TOOLS" >> "$GITHUB_ENV"
-          echo "Detected compileSdk=$COMPILE_SDK buildTools=$BUILD_TOOLS"
-
-      # ✅ Install the exact platform and build-tools your Gradle build expects
-      - name: Install required Android platforms/build-tools
-        shell: bash
-        run: |
-          set -euo pipefail
-          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
-            "platforms;android-${COMPILE_SDK}" \
-            "build-tools;${BUILD_TOOLS}"
+            platforms;android-34
+            build-tools;34.0.0
 
       # Use hosted Gradle (repo has no ./gradlew)
       - name: Setup Gradle (no cache)
